@@ -98,6 +98,7 @@ class HardestFirst(Algorithm):
             reviews = []
             for card_data in deck["cards"].values():
                 reviews += card_data.get("reviews", {}).values()
+            reviews = filter(lambda review: review is not None, reviews)
             card_data["reviews"][card_type] = max(min(reviews or []) - 1, 0)
 
         reviews = []
