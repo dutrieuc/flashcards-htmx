@@ -46,11 +46,12 @@ async def decks_search_component(
 
 
 @router.get("/decks/new", response_class=HTMLResponse)
-async def create_deck_page(render=Depends(template("private/deck.html"))):
+async def create_deck_page(request: Request, render=Depends(template("private/deck.html"))):
     return render(
         navbar_title="New Deck",
         deck={"name": "", "description": ""},
         algorithms=ALGORITHMS.keys(),
+        action=request.url_for('create_deck_endpoint'),
         deck_id=None
     )
 
@@ -70,7 +71,7 @@ async def import_deck_endpoint(file: UploadFile):
             if deck_id in db["decks"]:
                 raise HTTPException(status_code=409, detail="Deck with this name already exists")
             db["decks"][deck_id] = deck
-                
+
     except Exception:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -107,12 +108,29 @@ async def export_deck_endpoint(request: Request):
 
 
 @router.get("/decks/{deck_id}", response_class=HTMLResponse)
-async def edit_deck_page(deck_id: str, render=Depends(template("private/deck.html"))):
+async def edit_deck_page(request: Request, deck_id: str, render=Depends(template("private/deck.html"))):
     with shelve.open(database) as db:
         deck = db["decks"].get(deck_id, {})
         if not deck:
             raise HTTPException(status_code=404, detail="Deck not found")
-    return render(navbar_title=deck["name"], deck=deck, deck_id=deck_id, algorithms=ALGORITHMS.keys())
+    return render(navbar_title=deck["name"], deck=deck, deck_id=deck_id, action=request.url_for('save_deck_endpoint', deck_id=deck_id), algorithms=ALGORITHMS.keys())
+
+
+@router.post("/decks/new", response_class=RedirectResponse)
+async def create_deck_endpoint(request: Request):
+    async with request.form() as form:
+        with shelve.open(database) as db:
+            deck_id = _get_deck_id(form["name"])
+            if deck_id in db["decks"]:
+                raise HTTPException(status_code=409, detail="Deck with this name already exists")
+
+            db["decks"][deck_id] = {
+                "cards": {},
+                **_get_deck_values(form),
+            }
+    return RedirectResponse(
+        request.url_for("home_page"), status_code=status.HTTP_302_FOUND
+    )
 
 
 @router.post("/decks/{deck_id}", response_class=RedirectResponse)
@@ -120,20 +138,30 @@ async def save_deck_endpoint(request: Request, deck_id: Optional[str] = None):
     async with request.form() as form:
         with shelve.open(database) as db:
             if not deck_id:
-                deck_id = md5(form["name"].encode()).hexdigest()
+                deck_id = _get_deck_id(form["name"])
                 if deck_id in db["decks"]:
                     raise HTTPException(status_code=409, detail="Deck with this name already exists")
 
             db["decks"][deck_id] = {
                 **db["decks"].get(deck_id, {"cards": {}}),
-                "name": form["name"],
-                "description": form["description"],
-                "tags": [tag.strip() for tag in form["tags"].split(",") if tag.strip()],
-                "algorithm": form["algorithm"]
+                **_get_deck_values(form)
             }
     return RedirectResponse(
         request.url_for("home_page"), status_code=status.HTTP_302_FOUND
     )
+
+
+def _get_deck_id(name: str):
+    return md5(name.encode()).hexdigest()
+
+
+def _get_deck_values(form):
+    return {
+        "name": form["name"],
+        "description": form["description"],
+        "tags": [tag.strip() for tag in form["tags"].split(",") if tag.strip()],
+        "algorithm": form["algorithm"]
+    }
 
 
 @router.get(

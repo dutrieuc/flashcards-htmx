@@ -9,7 +9,7 @@
 
 {% block page %}
 <section id="single-card">
-    <form action="{{ url_for('save_deck_endpoint', deck_id=deck_id) }}" method="post">
+    <form action="{{ action }}" method="post">
         <div class="box main-card">  
             <div>
                 <input class="h1" type="text" name="name", placeholder="Name" value="{{ deck.name }}"></input>
